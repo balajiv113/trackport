@@ -7,6 +7,11 @@
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
+// Define 0 and 1 in big-endian (network byte order)
+__u16 ZERO = __bpf_constant_htons(0x0000);  // Big-endian 0
+__u16 ONE = __bpf_constant_htons(0x0001);   // Big-endian 1
+
+
 /**
  * struct sock_common reflects the start of the kernel's struct sock_common.
  * It only contains the fields up until skc_family that are accessed in the
@@ -100,14 +105,14 @@ static __always_inline int handle_socket(struct sock *sk, __u16 proto, __u16 act
     return 0;
 }
 
-SEC("fentry/inet_csk_accept")
+SEC("fentry/inet_csk_listen_start")
 int BPF_PROG(inet_csk_accept, struct sock *sk) {
-	return handle_socket(sk, 0, 0);
+	return handle_socket(sk, ZERO, ZERO);
 }
 
 SEC("fentry/inet_csk_listen_stop")
 int BPF_PROG(inet_csk_listen_stop, struct sock *sk) {
-	return handle_socket(sk, 0, 1);
+	return handle_socket(sk, ZERO, ONE);
 }
 
 SEC("fexit/inet_bind_sk")
@@ -117,7 +122,7 @@ int BPF_PROG(inet_bind_sk, struct sock *sk) {
         __u64 sk_ptr = (__u64)sk;
         __u16 sport = bpf_htons(sk->__sk_common.skc_num);
         bpf_map_update_elem(&ports, &sk_ptr, &sport, BPF_ANY);
-        return handle_socket(sk, 1, 0);
+        return handle_socket(sk, ONE, ZERO);
     }
     return 0;
 }
@@ -129,7 +134,7 @@ int BPF_PROG(inet6_bind_sk, struct sock *sk) {
         __u64 sk_ptr = (__u64)sk;
         __u16 sport = bpf_htons(sk->__sk_common.skc_num);
         bpf_map_update_elem(&ports, &sk_ptr, &sport, BPF_ANY);
-        return handle_socket(sk, 1, 0);
+        return handle_socket(sk, ONE, ZERO);
     }
     return 0;
 }
@@ -139,7 +144,7 @@ int BPF_PROG(udp_destroy_sock, struct sock *sk) {
     __u64 sk_ptr = (__u64)sk;
     __u16 *sport = bpf_map_lookup_elem(&ports, &sk_ptr);
     if (sport) {
-	    return handle_socket(sk, 1, 1);
+	    return handle_socket(sk, ONE, ONE);
 	}
 	return 0;
 }
@@ -149,7 +154,7 @@ int BPF_PROG(udpv6_destroy_sock, struct sock *sk) {
     __u64 sk_ptr = (__u64)sk;
     __u16 *sport = bpf_map_lookup_elem(&ports, &sk_ptr);
     if (sport) {
-	    return handle_socket(sk, 1, 1);
+	    return handle_socket(sk, ONE, ONE);
 	}
 	return 0;
 }
