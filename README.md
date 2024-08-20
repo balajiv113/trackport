@@ -1,2 +1,2 @@
 # trackport
-TCP / UDP port monitor for linux
+Go library or tool to monitor TCP / UDP ports using eBPF
