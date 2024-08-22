@@ -20,8 +20,8 @@ type bpfEvent struct {
 	Dport  uint16
 	_      [2]byte
 	Daddr  uint32
+	Pid    uint16
 	Action uint16
-	_      [2]byte
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.

@@ -42,14 +42,6 @@ struct sock_common {
  */
 struct sock {
 	struct sock_common __sk_common;
-	u16 sk_protocol;
-};
-
-struct socket {
-    char __pad0[8];   // Padding for `state` and `type`
-    unsigned long __pad1;  // Padding for `flags`
-    struct file	*file;
-    struct sock *sk;
 };
 
 struct {
@@ -78,11 +70,15 @@ struct event {
 	__u16 dport;
     __be32 daddr;
     
+    __u16 pid;
+    
 	__u16 action; //0 - Port Open, 1 - Port Close 
 };
 struct event *unused __attribute__((unused));
 
 static __always_inline int handle_socket(struct sock *sk, __u16 proto, __u16 action) {
+    u64 pid = bpf_get_current_pid_tgid();
+    
     struct event *tcp_info;
     tcp_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
     if (!tcp_info) {
@@ -99,6 +95,7 @@ static __always_inline int handle_socket(struct sock *sk, __u16 proto, __u16 act
     
     tcp_info->proto = proto;
     tcp_info->action = action;
+    tcp_info->pid = bpf_htons(pid);
     
     bpf_ringbuf_submit(tcp_info, 0);
     

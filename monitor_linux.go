@@ -11,6 +11,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netns"
 	"net"
 	"syscall"
 )
@@ -104,6 +105,10 @@ func (m *PortTracker) Run(ctx context.Context) error {
 		}
 	}()
 
+	pidNs := make(map[int]string)
+	ns, _ := netns.Get()
+	uniqueId := ns.UniqueId()
+
 	rd, err := ringbuf.NewReader(objs.bpfMaps.Events)
 	if err != nil {
 		return err
@@ -132,9 +137,21 @@ func (m *PortTracker) Run(ctx context.Context) error {
 			continue
 		}
 
-		ip := intToIP(event.Family, event.Saddr)
-		port := fmt.Sprintf("%d", event.Sport)
-		m.event <- &PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port}
+		eventNs, err := netns.GetFromPid(int(event.Pid))
+		eventId := eventNs.UniqueId()
+		if eventNs == -1 {
+			eventId = pidNs[int(event.Pid)]
+		}
+		if uniqueId == eventId {
+			pidNs[int(event.Pid)] = eventId
+			ip := intToIP(event.Family, event.Saddr)
+			port := fmt.Sprintf("%d", event.Sport)
+			m.event <- &PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port}
+			if event.Action != CLOSE {
+				continue
+			}
+		}
+		delete(pidNs, int(event.Pid))
 	}
 }
 
