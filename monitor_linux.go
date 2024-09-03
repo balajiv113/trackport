@@ -22,7 +22,7 @@ type PortTracker struct {
 	tcp bool
 	udp bool
 
-	event chan *PortEvent
+	callbackFn func(event *PortEvent)
 }
 
 type (
@@ -40,6 +40,15 @@ const (
 	CLOSE
 )
 
+func ProtocolToString(protocol Protocol) string {
+	switch protocol {
+	case UDP:
+		return "udp"
+	default:
+		return "tcp"
+	}
+}
+
 type PortEvent struct {
 	Protocol Protocol
 	Action   Action
@@ -47,8 +56,8 @@ type PortEvent struct {
 	Port     string
 }
 
-func NewTracker(event chan *PortEvent, udp bool) *PortTracker {
-	return &PortTracker{event: event, tcp: true, udp: udp}
+func NewTracker(callbackFn func(event *PortEvent), udp bool) *PortTracker {
+	return &PortTracker{callbackFn: callbackFn, tcp: true, udp: udp}
 }
 
 func (m *PortTracker) Run(ctx context.Context) error {
@@ -144,9 +153,9 @@ func (m *PortTracker) Run(ctx context.Context) error {
 		}
 		if uniqueId == eventId {
 			pidNs[int(event.Pid)] = eventId
-			ip := intToIP(event.Family, event.Saddr)
+			ip := convertArrayToIP(event.Saddr, event.Family == syscall.AF_INET6)
 			port := fmt.Sprintf("%d", event.Sport)
-			m.event <- &PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port}
+			m.callbackFn(&PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port})
 			if event.Action != CLOSE {
 				continue
 			}
@@ -155,18 +164,17 @@ func (m *PortTracker) Run(ctx context.Context) error {
 	}
 }
 
-// intToIP converts IPv4 number to net.IP
-func intToIP(family uint32, ipNum uint32) net.IP {
-	var ip net.IP
-	afInet6 := uint32(syscall.AF_INET6)
-	afInet6BigEndian := afInet6 << 24
-
-	if family == afInet6BigEndian {
-		ip = make(net.IP, 16)
+// convertArrayToIP converts an array of uint32 values to a net.IP address.
+func convertArrayToIP(input [4]uint32, ipv6 bool) net.IP {
+	if ipv6 {
+		addressBuf := make(net.IP, 16)
+		for i := range 4 {
+			binary.BigEndian.PutUint32(addressBuf[i*4:i*4+4], input[i])
+		}
+		return addressBuf
 	} else {
-		ip = make(net.IP, 4)
+		addressBuf := make(net.IP, 4)
+		binary.BigEndian.PutUint32(addressBuf, input[0])
+		return addressBuf
 	}
-
-	binary.BigEndian.PutUint32(ip, ipNum)
-	return ip
 }

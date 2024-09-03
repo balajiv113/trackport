@@ -5,12 +5,30 @@
 #include "bpf_endian.h"
 #include "bpf_tracing.h"
 
+#define AF_INET6 10
+
 char __license[] SEC("license") = "Dual MIT/GPL";
 
 // Define 0 and 1 in big-endian (network byte order)
 __u16 ZERO = __bpf_constant_htons(0x0000);  // Big-endian 0
 __u16 ONE = __bpf_constant_htons(0x0001);   // Big-endian 1
 
+struct proto {
+    __u32 pad;
+};
+
+struct in6_addr {
+	union {
+		__u8 u6_addr8[16];
+		__be16  u6_addr16[8];
+		__be32  u6_addr32[4];
+	} in6_u;
+};
+
+struct hlist_node {
+    struct hlist_node *next;
+    struct hlist_node **pprev;
+};
 
 /**
  * struct sock_common reflects the start of the kernel's struct sock_common.
@@ -20,8 +38,8 @@ __u16 ONE = __bpf_constant_htons(0x0001);   // Big-endian 1
 struct sock_common {
 	union {
 		struct {
-			__be32 skc_daddr;
-			__be32 skc_rcv_saddr;
+			u32 skc_daddr;
+			u32 skc_rcv_saddr;
 		};
 	};
 	union {
@@ -35,6 +53,21 @@ struct sock_common {
 		};
 	};
 	short unsigned int skc_family;
+	volatile unsigned char skc_state;
+    unsigned char skc_reuse:4;
+    unsigned char skc_reuseport:1;
+    unsigned char skc_ipv6only:1;
+    unsigned char skc_net_refcnt:1;
+    int skc_bound_dev_if;
+    union {
+        struct hlist_node skc_bind_node;
+    	struct hlist_node skc_portaddr_node;
+    };
+    struct proto *skc_prot;
+    struct net *skc_net;
+    
+    struct in6_addr skc_v6_daddr;
+    struct in6_addr skc_v6_rcv_saddr;
 };
 
 /**
@@ -42,6 +75,17 @@ struct sock_common {
  */
 struct sock {
 	struct sock_common __sk_common;
+};
+
+struct socket {
+	__u16 state;
+
+	short type;
+
+	unsigned long flags;
+
+	struct file *file;
+	struct sock *sk;
 };
 
 struct {
@@ -62,13 +106,20 @@ struct {
  * can generate a Go type from it.
  */
 struct event {
-    unsigned int family;
-	__u16 proto; //0 - TCP, 1 - UDP
-	__u16 sport;
-	__be32 saddr;
+    u32 src_ip[4];
+	u32 dst_ip[4];
+	u16 src_port;
+	u16 dst_port;
+	u8 protocol;
+	u8 ipv6;
 	
+    __u16 family;
+	__u16 proto; //0 - TCP, 1 - UDP
+	u32 saddr[4];
+    u32 daddr[4];
+    
+	__u16 sport;
 	__u16 dport;
-    __be32 daddr;
     
     __u16 pid;
     
@@ -85,12 +136,17 @@ static __always_inline int handle_socket(struct sock *sk, __u16 proto, __u16 act
         return 0;
     }
     
-    tcp_info->family = sk->__sk_common.skc_family;
-    
-    tcp_info->saddr = sk->__sk_common.skc_rcv_saddr;
+    tcp_info->family = bpf_htons(sk->__sk_common.skc_family);
+    if (sk->__sk_common.skc_family == AF_INET6) {
+        for (int i = 0; i < 4; i++) {
+            tcp_info->saddr[i] = sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[i];
+            tcp_info->daddr[i] = sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[i];
+        }
+    } else {
+        tcp_info->saddr[0] = sk->__sk_common.skc_rcv_saddr;
+        tcp_info->daddr[0] = sk->__sk_common.skc_daddr;
+    }
     tcp_info->sport = bpf_htons(sk->__sk_common.skc_num);
-    
-    tcp_info->daddr = sk->__sk_common.skc_daddr;
     tcp_info->dport = sk->__sk_common.skc_dport;
     
     tcp_info->proto = proto;
@@ -112,9 +168,10 @@ int BPF_PROG(inet_csk_listen_stop, struct sock *sk) {
 	return handle_socket(sk, ZERO, ONE);
 }
 
-SEC("fexit/inet_bind_sk")
-int BPF_PROG(inet_bind_sk, struct sock *sk) {
-    struct tcp_sock *tcp = bpf_skc_to_tcp_sock(sk);
+SEC("fexit/inet_bind")
+int BPF_PROG(inet_bind_sk, struct socket *socket) {
+    struct sock *sk = socket->sk;
+    struct tcp_sock *tcp = bpf_skc_to_tcp_sock(socket->sk);
     if(!tcp) {
         __u64 sk_ptr = (__u64)sk;
         __u16 sport = bpf_htons(sk->__sk_common.skc_num);
@@ -124,8 +181,9 @@ int BPF_PROG(inet_bind_sk, struct sock *sk) {
     return 0;
 }
 
-SEC("fexit/inet6_bind_sk")
-int BPF_PROG(inet6_bind_sk, struct sock *sk) {
+SEC("fexit/inet6_bind")
+int BPF_PROG(inet6_bind_sk, struct socket *socket) {
+    struct sock *sk = socket->sk;
     struct tcp_sock *tcp = bpf_skc_to_tcp_sock(sk);
     if(!tcp) {
         __u64 sk_ptr = (__u64)sk;

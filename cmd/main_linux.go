@@ -7,13 +7,10 @@ import (
 )
 
 func main() {
-	events := make(chan *trackport.PortEvent)
-	go func() {
-		for event := range events {
-			log.Print(event)
-		}
-	}()
-	portMonitor := trackport.NewTracker(events, true)
+	callbackFn := func(event *trackport.PortEvent) {
+		log.Print(event)
+	}
+	portMonitor := trackport.NewTracker(callbackFn, true)
 	err := portMonitor.Run(context.Background())
 	if err != nil {
 		log.Fatal(err)
