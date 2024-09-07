@@ -1,4 +1,4 @@
-package trackport
+package bpftracker
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/balajiv113/trackport/pkg/trackapi"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -17,50 +18,16 @@ import (
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -type event bpf fentry.c -- -I./headers
-
-type PortTracker struct {
-	tcp bool
-	udp bool
-
-	callbackFn func(event *PortEvent)
+type EbpfPortTracker struct {
+	trackapi.PortTracker
+	callbackFn func(event *trackapi.PortEvent)
 }
 
-type (
-	Protocol = uint16
-	Action   = uint16
-)
-
-const (
-	TCP Protocol = iota
-	UDP
-)
-
-const (
-	OPEN Action = iota
-	CLOSE
-)
-
-func ProtocolToString(protocol Protocol) string {
-	switch protocol {
-	case UDP:
-		return "udp"
-	default:
-		return "tcp"
-	}
+func NewTracker(callbackFn func(event *trackapi.PortEvent)) trackapi.PortTracker {
+	return &EbpfPortTracker{callbackFn: callbackFn}
 }
 
-type PortEvent struct {
-	Protocol Protocol
-	Action   Action
-	Ip       net.IP
-	Port     string
-}
-
-func NewTracker(callbackFn func(event *PortEvent), udp bool) *PortTracker {
-	return &PortTracker{callbackFn: callbackFn, tcp: true, udp: udp}
-}
-
-func (m *PortTracker) Run(ctx context.Context) error {
+func (m *EbpfPortTracker) Run(ctx context.Context) error {
 	// Allow the current process to lock memory for eBPF resources.
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return err
@@ -84,28 +51,24 @@ func (m *PortTracker) Run(ctx context.Context) error {
 	}
 
 	links := make([]link.Link, 10)
-	if m.tcp {
-		for _, pgm := range tcpPgms {
-			traceLink, err := link.AttachTracing(link.TracingOptions{
-				Program: pgm,
-			})
-			if err != nil {
-				return err
-			}
-			links = append(links, traceLink)
+	for _, pgm := range tcpPgms {
+		traceLink, err := link.AttachTracing(link.TracingOptions{
+			Program: pgm,
+		})
+		if err != nil {
+			return err
 		}
+		links = append(links, traceLink)
 	}
 
-	if m.udp {
-		for _, pgm := range udpPgms {
-			traceLink, err := link.AttachTracing(link.TracingOptions{
-				Program: pgm,
-			})
-			if err != nil {
-				return err
-			}
-			links = append(links, traceLink)
+	for _, pgm := range udpPgms {
+		traceLink, err := link.AttachTracing(link.TracingOptions{
+			Program: pgm,
+		})
+		if err != nil {
+			return err
 		}
+		links = append(links, traceLink)
 	}
 
 	defer func() {
@@ -155,8 +118,8 @@ func (m *PortTracker) Run(ctx context.Context) error {
 			pidNs[int(event.Pid)] = eventId
 			ip := convertArrayToIP(event.Saddr, event.Family == syscall.AF_INET6)
 			port := fmt.Sprintf("%d", event.Sport)
-			m.callbackFn(&PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port})
-			if event.Action != CLOSE {
+			m.callbackFn(&trackapi.PortEvent{Action: event.Action, Protocol: event.Proto, Ip: ip, Port: port})
+			if event.Action != trackapi.CLOSE {
 				continue
 			}
 		}
