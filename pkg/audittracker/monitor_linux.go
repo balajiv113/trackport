@@ -35,15 +35,11 @@ func (p *AuditPortTracker) Run(ctx context.Context) error {
 		logrus.Errorf("Failed to enable audit event: %v", err)
 	}
 
-	_, err = client.DeleteRules()
-	if err != nil {
-		return err
-	}
 	syscallRule := &rule.SyscallRule{
 		Type:     rule.PrependSyscallRuleType,
 		List:     "exit",
 		Action:   "always",
-		Syscalls: []string{"socket", "getsockname", "kill", "tgkill", "tkill"},
+		Syscalls: []string{"socket", "bind", "getsockname", "kill", "tgkill", "tkill"},
 	}
 	build, err := rule.Build(syscallRule)
 	if err := client.AddRule(build); err != nil && err.Error() != "rule exists" {
@@ -90,12 +86,19 @@ func (p *AuditPortTracker) Run(ctx context.Context) error {
 				callEvent.Protocol = trackapi.UDP
 			}
 			p.ports[event.Process.PID] = callEvent
-		} else if event.Data["syscall"] == "getsockname" {
+		} else if event.Data["syscall"] == "bind" {
 			callEvent, ok := p.ports[event.Process.PID]
 			if ok {
 				callEvent.Ip = net.ParseIP(event.Data["socket_addr"])
 				callEvent.Port = event.Data["socket_port"]
 				callEvent.Action = trackapi.OPEN
+				if callEvent.Port != "0" {
+					p.callbackFn(callEvent)
+				}
+			}
+		} else if event.Data["syscall"] == "getsockname" {
+			callEvent, ok := p.ports[event.Process.PID]
+			if ok && callEvent.Port == "0" {
 				callEvent.Port = event.Data["socket_port"]
 				p.callbackFn(callEvent)
 			}
