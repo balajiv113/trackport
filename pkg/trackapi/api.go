@@ -22,11 +22,6 @@ const (
 	CLOSE
 )
 
-const (
-	EBPF  = "EBPF"
-	AUDIT = "AUDIT"
-)
-
 func ProtocolToString(protocol Protocol) string {
 	switch protocol {
 	case UDP:
