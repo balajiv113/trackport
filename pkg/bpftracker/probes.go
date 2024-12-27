@@ -17,21 +17,23 @@ type FentryOrKprobe struct {
 
 func LoadProbes(objs bpfObjects) map[string]FentryOrKprobe {
 	return map[string]FentryOrKprobe{
-		"inet_csk_accept":      {nil, objs.KprobeInetCskAccept},
-		"inet_csk_listen_stop": {nil, objs.KprobeInetCskListenStop},
-		"inet_bind":            {nil, objs.KprobeInetBind},
-		"inet_bind_exit":       {nil, objs.KretprobeInetBind},
-		"inet6_bind":           {nil, objs.KprobeInetBind},
-		"inet6_bind_exit":      {nil, objs.KretprobeInetBind},
-		"udp_destroy_sock":     {nil, objs.KprobeUdpDestroySock},
-		"udpv6_destroy_sock":   {nil, objs.KprobeUdpDestroySock},
+		"inet_csk_accept":      {objs.FentryInetCskAccept, objs.KprobeInetCskAccept},
+		"inet_csk_listen_stop": {objs.FentryInetCskListenStop, objs.KprobeInetCskListenStop},
+		"inet_bind":            {objs.FentryInetBind, objs.KprobeInetBind},
+		"inet_bind_exit":       {objs.FexitInetBind, objs.KretprobeInetBind},
+		"inet6_bind":           {objs.FentryInet6Bind, objs.KprobeInetBind},
+		"inet6_bind_exit":      {objs.FexitInet6Bind, objs.KretprobeInetBind},
+		"udp_destroy_sock":     {objs.FentryUdpDestroySock, objs.KprobeUdpDestroySock},
+		"udpv6_destroy_sock":   {objs.FentryUdpv6DestroySock, objs.KprobeUdpDestroySock},
 	}
 }
 
 func RunProbe(funcName string, probe FentryOrKprobe) (link.Link, error) {
 	if ok := commonFentryCheck(funcName); probe.fentry != nil && ok {
 		logrus.Infof("Binding in fentry")
-		return link.AttachTracing(link.TracingOptions{Program: probe.fentry})
+		return link.AttachTracing(link.TracingOptions{
+			Program: probe.fentry,
+		})
 	}
 	if probe.kprobe != nil {
 		if strings.HasSuffix(funcName, "_exit") {
@@ -49,10 +51,15 @@ func commonFentryCheck(funcName string) bool {
 		return false
 	}
 
+	attachType := ebpf.AttachTraceFEntry
+	if strings.HasSuffix(funcName, "_exit") {
+		attachType = ebpf.AttachTraceFExit
+	}
+
 	spec := &ebpf.ProgramSpec{
 		Type:       ebpf.Tracing,
-		AttachType: ebpf.AttachTraceFEntry,
-		AttachTo:   funcName,
+		AttachType: attachType,
+		AttachTo:   strings.TrimSuffix(funcName, "_exit"),
 		Instructions: asm.Instructions{
 			asm.LoadImm(asm.R0, 0, asm.DWord),
 			asm.Return(),

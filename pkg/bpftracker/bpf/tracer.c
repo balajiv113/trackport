@@ -34,10 +34,22 @@ static __always_inline int handle_socket(struct sock *sk, conn_tuple_t t, metada
     return 0;
 }
 
+SEC("fentry/inet_csk_accept")
+int BPF_PROG(fentry__inet_csk_accept, struct sock *sk) {
+    conn_tuple_t t = {};
+    return handle_socket(sk, t, CONN_TYPE_TCP, PORT_OPEN);
+}
+
 SEC("kprobe/inet_csk_accept")
 int BPF_KPROBE(kprobe__inet_csk_accept, struct sock *sk) {
     conn_tuple_t t = {};
     return handle_socket(sk, t, CONN_TYPE_TCP, PORT_OPEN); 
+}
+
+SEC("fentry/inet_csk_listen_stop")
+int BPF_PROG(fentry__inet_csk_listen_stop, struct sock *sk) {
+    conn_tuple_t t = {};
+    return handle_socket(sk, t, CONN_TYPE_TCP, PORT_CLOSE); 
 }
 
 SEC("kprobe/inet_csk_listen_stop")
@@ -46,11 +58,12 @@ int BPF_KPROBE(kprobe__inet_csk_listen_stop, struct sock *sk) {
     return handle_socket(sk, t, CONN_TYPE_TCP, PORT_CLOSE); 
 }
 
-SEC("kprobe/inet_bind")
-int BPF_KPROBE(kprobe__inet_bind, struct socket *sock, struct sockaddr *addr) {
+static __always_inline int handle_sys_bind(struct socket *sock, struct sockaddr *addr) {
+    log_debug("handle sys bind");
     __u16 type = 0;
     bpf_probe_read_kernel(&type, sizeof(__u16), &sock->type);
     if ((type & SOCK_DGRAM) == 0) {
+    log_debug("handle sys bind: not dgram");
         return 0;
     }
     if (addr == NULL) {
@@ -63,11 +76,27 @@ int BPF_KPROBE(kprobe__inet_bind, struct socket *sock, struct sockaddr *addr) {
     args.sk = socket_sk(sock);
     args.addr = addr;
     bpf_map_update_elem(&udp_pending, &pid_tgid, &args, BPF_ANY);
+    log_debug("handle sys bind: add map");
     return 0;
 }
 
-SEC("kretprobe/inet_bind")
-int BPF_KRETPROBE(kretprobe__inet_bind, __s64 ret) {
+SEC("fentry/inet_bind")
+int BPF_PROG(fentry__inet_bind, struct socket *sock, struct sockaddr *addr) {
+    return handle_sys_bind(sock, addr);
+}
+
+SEC("fentry/inet6_bind")
+int BPF_PROG(fentry__inet6_bind, struct socket *sock, struct sockaddr *addr) {
+    return handle_sys_bind(sock, addr);
+}
+
+SEC("kprobe/inet_bind")
+int BPF_KPROBE(kprobe__inet_bind, struct socket *sock, struct sockaddr *addr) {
+    return handle_sys_bind(sock, addr);
+}
+
+static __always_inline int handle_sys_bind_exit(__s64 ret) {
+    log_debug("handle sys bind exit");
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     
     bind_syscall_args_t *args = bpf_map_lookup_elem(&udp_pending, &pid_tgid);
@@ -79,10 +108,38 @@ int BPF_KRETPROBE(kretprobe__inet_bind, __s64 ret) {
     struct sockaddr *addr = args->addr;
     bpf_map_delete_elem(&udp_pending, &pid_tgid);
     if (ret != 0) {
+        log_debug("handle sys bind exit: return non-zero %lld", ret);
         return 0;
     }
     conn_tuple_t t = {};
     return handle_socket(sk, t, CONN_TYPE_UDP, PORT_OPEN);
+}
+
+SEC("fexit/inet_bind")
+int BPF_PROG(fexit__inet_bind, struct socket *sock, struct sockaddr *uaddr, int addr_len, int rc) {
+    return handle_sys_bind_exit(rc);
+}
+
+SEC("fexit/inet6_bind")
+int BPF_PROG(fexit__inet6_bind, struct socket *sock, struct sockaddr *uaddr, int addr_len, int rc) {
+    return handle_sys_bind_exit(rc);
+}
+
+SEC("kretprobe/inet_bind")
+int BPF_KRETPROBE(kretprobe__inet_bind, __s64 ret) {
+    return handle_sys_bind_exit(ret);
+}
+
+SEC("fentry/udp_destroy_sock")
+int BPF_PROG(fentry__udp_destroy_sock, struct sock *sk) {
+    conn_tuple_t t = {};
+    return handle_socket(sk, t, CONN_TYPE_UDP, PORT_CLOSE); 
+}
+
+SEC("fentry/udpv6_destroy_sock")
+int BPF_PROG(fentry__udpv6_destroy_sock, struct sock *sk) {
+    conn_tuple_t t = {};
+    return handle_socket(sk, t, CONN_TYPE_UDP, PORT_CLOSE); 
 }
 
 SEC("kprobe/udp_destroy_sock")

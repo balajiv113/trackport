@@ -67,6 +67,14 @@ type bpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
+	FentryInet6Bind         *ebpf.ProgramSpec `ebpf:"fentry__inet6_bind"`
+	FentryInetBind          *ebpf.ProgramSpec `ebpf:"fentry__inet_bind"`
+	FentryInetCskAccept     *ebpf.ProgramSpec `ebpf:"fentry__inet_csk_accept"`
+	FentryInetCskListenStop *ebpf.ProgramSpec `ebpf:"fentry__inet_csk_listen_stop"`
+	FentryUdpDestroySock    *ebpf.ProgramSpec `ebpf:"fentry__udp_destroy_sock"`
+	FentryUdpv6DestroySock  *ebpf.ProgramSpec `ebpf:"fentry__udpv6_destroy_sock"`
+	FexitInet6Bind          *ebpf.ProgramSpec `ebpf:"fexit__inet6_bind"`
+	FexitInetBind           *ebpf.ProgramSpec `ebpf:"fexit__inet_bind"`
 	KprobeInetBind          *ebpf.ProgramSpec `ebpf:"kprobe__inet_bind"`
 	KprobeInetCskAccept     *ebpf.ProgramSpec `ebpf:"kprobe__inet_csk_accept"`
 	KprobeInetCskListenStop *ebpf.ProgramSpec `ebpf:"kprobe__inet_csk_listen_stop"`
@@ -131,6 +139,14 @@ type bpfVariables struct {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
+	FentryInet6Bind         *ebpf.Program `ebpf:"fentry__inet6_bind"`
+	FentryInetBind          *ebpf.Program `ebpf:"fentry__inet_bind"`
+	FentryInetCskAccept     *ebpf.Program `ebpf:"fentry__inet_csk_accept"`
+	FentryInetCskListenStop *ebpf.Program `ebpf:"fentry__inet_csk_listen_stop"`
+	FentryUdpDestroySock    *ebpf.Program `ebpf:"fentry__udp_destroy_sock"`
+	FentryUdpv6DestroySock  *ebpf.Program `ebpf:"fentry__udpv6_destroy_sock"`
+	FexitInet6Bind          *ebpf.Program `ebpf:"fexit__inet6_bind"`
+	FexitInetBind           *ebpf.Program `ebpf:"fexit__inet_bind"`
 	KprobeInetBind          *ebpf.Program `ebpf:"kprobe__inet_bind"`
 	KprobeInetCskAccept     *ebpf.Program `ebpf:"kprobe__inet_csk_accept"`
 	KprobeInetCskListenStop *ebpf.Program `ebpf:"kprobe__inet_csk_listen_stop"`
@@ -140,6 +156,14 @@ type bpfPrograms struct {
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
+		p.FentryInet6Bind,
+		p.FentryInetBind,
+		p.FentryInetCskAccept,
+		p.FentryInetCskListenStop,
+		p.FentryUdpDestroySock,
+		p.FentryUdpv6DestroySock,
+		p.FexitInet6Bind,
+		p.FexitInetBind,
 		p.KprobeInetBind,
 		p.KprobeInetCskAccept,
 		p.KprobeInetCskListenStop,
