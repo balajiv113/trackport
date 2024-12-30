@@ -163,6 +163,7 @@ struct pt_regs {
 
 /* === Copy end from bpf/common.h ===*/
 
+/* === Refer vmlinux.h for all versions in https://github.com/libbpf/vmlinux.h ===*/
 /* === pt_regs support for arm64 start ===*/
 #if defined(__TARGET_ARCH_arm64)
 struct user_pt_regs {
@@ -171,27 +172,50 @@ struct user_pt_regs {
 	__u64 pc;
 	__u64 pstate;
 };
+#endif /* __TARGET_ARCH_arm64 */
 
+#if defined(__TARGET_ARCH_arm)
 struct pt_regs {
-	union {
-		struct user_pt_regs user_regs;
-		struct {
-			u64 regs[31];
-			u64 sp;
-			u64 pc;
-			u64 pstate;
-		};
-	};
-	u64 orig_x0;
-	s32 syscallno;
-	u32 unused2;
-	u64 sdei_ttbr1;
-	u64 pmr_save;
-	u64 stackframe[2];
-	u64 lockdep_hardirqs;
-	u64 exit_rcu;
+	long unsigned int uregs[18];
 };
-#endif /* __TARGET_ARCH_x86 */
+#endif /* __TARGET_ARCH_arm */
+
+#if defined(__TARGET_ARCH_riscv)
+struct user_regs_struct {
+	long unsigned int pc;
+	long unsigned int ra;
+	long unsigned int sp;
+	long unsigned int gp;
+	long unsigned int tp;
+	long unsigned int t0;
+	long unsigned int t1;
+	long unsigned int t2;
+	long unsigned int s0;
+	long unsigned int s1;
+	long unsigned int a0;
+	long unsigned int a1;
+	long unsigned int a2;
+	long unsigned int a3;
+	long unsigned int a4;
+	long unsigned int a5;
+	long unsigned int a6;
+	long unsigned int a7;
+	long unsigned int s2;
+	long unsigned int s3;
+	long unsigned int s4;
+	long unsigned int s5;
+	long unsigned int s6;
+	long unsigned int s7;
+	long unsigned int s8;
+	long unsigned int s9;
+	long unsigned int s10;
+	long unsigned int s11;
+	long unsigned int t3;
+	long unsigned int t4;
+	long unsigned int t5;
+	long unsigned int t6;
+};
+#endif /* __TARGET_ARCH_riscv */
 /* === pt_regs support for arm64 end ===*/
 
 /* === Manually stripped version of vmlinux.h start, refer sock.h in linux kernel ===*/

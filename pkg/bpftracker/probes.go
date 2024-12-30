@@ -17,24 +17,24 @@ type FentryOrKprobe struct {
 
 func LoadProbes(objs bpfObjects) map[string]FentryOrKprobe {
 	return map[string]FentryOrKprobe{
-		"inet_csk_accept":      {objs.FentryInetCskAccept, objs.KprobeInetCskAccept},
-		"inet_csk_listen_stop": {objs.FentryInetCskListenStop, objs.KprobeInetCskListenStop},
-		"inet_bind":            {objs.FentryInetBind, objs.KprobeInetBind},
-		"inet_bind_exit":       {objs.FexitInetBind, objs.KretprobeInetBind},
-		"inet6_bind":           {objs.FentryInet6Bind, objs.KprobeInetBind},
-		"inet6_bind_exit":      {objs.FexitInet6Bind, objs.KretprobeInetBind},
-		"udp_destroy_sock":     {objs.FentryUdpDestroySock, objs.KprobeUdpDestroySock},
-		"udpv6_destroy_sock":   {objs.FentryUdpv6DestroySock, objs.KprobeUdpDestroySock},
+		"inet_csk_listen_start": {objs.FentryInetCskAccept, objs.KprobeInetCskAccept},
+		"inet_csk_listen_stop":  {objs.FentryInetCskListenStop, objs.KprobeInetCskListenStop},
+		"inet_bind":             {objs.FentryInetBind, objs.KprobeInetBind},
+		"inet_bind_exit":        {objs.FexitInetBind, objs.KretprobeInetBind},
+		"inet6_bind":            {objs.FentryInet6Bind, objs.KprobeInetBind},
+		"inet6_bind_exit":       {objs.FexitInet6Bind, objs.KretprobeInetBind},
+		"udp_destroy_sock":      {objs.FentryUdpDestroySock, objs.KprobeUdpDestroySock},
+		"udpv6_destroy_sock":    {objs.FentryUdpv6DestroySock, objs.KprobeUdpDestroySock},
 	}
 }
 
 func RunProbe(funcName string, probe FentryOrKprobe) (link.Link, error) {
-	if ok := commonFentryCheck(funcName); probe.fentry != nil && ok {
-		logrus.Infof("Binding in fentry")
-		return link.AttachTracing(link.TracingOptions{
-			Program: probe.fentry,
-		})
-	}
+	//if ok := commonFentryCheck(funcName); probe.fentry != nil && ok {
+	//	logrus.Infof("Binding in fentry")
+	//	return link.AttachTracing(link.TracingOptions{
+	//		Program: probe.fentry,
+	//	})
+	//}
 	if probe.kprobe != nil {
 		if strings.HasSuffix(funcName, "_exit") {
 			logrus.Infof("Binding in kretprobe")

@@ -34,13 +34,13 @@ static __always_inline int handle_socket(struct sock *sk, conn_tuple_t t, metada
     return 0;
 }
 
-SEC("fentry/inet_csk_accept")
+SEC("fentry/inet_csk_listen_start")
 int BPF_PROG(fentry__inet_csk_accept, struct sock *sk) {
     conn_tuple_t t = {};
     return handle_socket(sk, t, CONN_TYPE_TCP, PORT_OPEN);
 }
 
-SEC("kprobe/inet_csk_accept")
+SEC("kprobe/inet_csk_listen_start")
 int BPF_KPROBE(kprobe__inet_csk_accept, struct sock *sk) {
     conn_tuple_t t = {};
     return handle_socket(sk, t, CONN_TYPE_TCP, PORT_OPEN); 
