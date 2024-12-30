@@ -392,6 +392,30 @@ enum sock_type {
 	SOCK_PACKET = 10,
 };
 
+struct sockaddr {
+	int sa_family;
+	char sa_data[14];
+};
+
+struct in_addr {
+	__be32 s_addr;
+};
+
+struct sockaddr_in {
+	int sin_family;
+	__be16 sin_port;
+	struct in_addr sin_addr;
+	unsigned char __pad[8];
+};
+
+struct sockaddr_in6 {
+	short unsigned int sin6_family;
+	__be16 sin6_port;
+	__be32 sin6_flowinfo;
+	struct in6_addr sin6_addr;
+	__u32 sin6_scope_id;
+};
+
 struct ns_common {
 	atomic_t stashed;
 	const struct proc_ns_operations *ops;

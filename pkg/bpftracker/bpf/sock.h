@@ -100,8 +100,14 @@ static __always_inline u32 read_saddr_v4(struct sock *skp) {
 }
 
 static __always_inline void read_in6_addr(u64 *addr_h, u64 *addr_l, const struct in6_addr *in6) {
-    BPF_CORE_READ_INTO(addr_h, in6, in6_u.u6_addr32[0]);
-    BPF_CORE_READ_INTO(addr_l, in6, in6_u.u6_addr32[2]);
+    u32 part0 = BPF_CORE_READ(in6, in6_u.u6_addr32[0]);
+    u32 part1 = BPF_CORE_READ(in6, in6_u.u6_addr32[1]);
+    u32 part2 = BPF_CORE_READ(in6, in6_u.u6_addr32[2]);
+    u32 part3 = BPF_CORE_READ(in6, in6_u.u6_addr32[3]);
+    
+    // Combine the parts into two 64-bit values (most significant and least significant)
+    *addr_h = ((u64)part0 << 32) | part1; // addr_h is the high 64 bits (combined part0 and part1)
+    *addr_l = ((u64)part2 << 32) | part3; // addr_l is the low 64 bits (combined part2 and part3)
 }
 
 static __always_inline void read_saddr_v6(struct sock *skp, u64 *addr_h, u64 *addr_l) {

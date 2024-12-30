@@ -59,11 +59,11 @@ int BPF_KPROBE(kprobe__inet_csk_listen_stop, struct sock *sk) {
 }
 
 static __always_inline int handle_sys_bind(struct socket *sock, struct sockaddr *addr) {
-    log_debug("handle sys bind");
+    log_debug("handle sys bind"); 
     __u16 type = 0;
     bpf_probe_read_kernel(&type, sizeof(__u16), &sock->type);
     if ((type & SOCK_DGRAM) == 0) {
-    log_debug("handle sys bind: not dgram");
+        log_debug("handle sys bind: not dgram");
         return 0;
     }
     if (addr == NULL) {
