@@ -10,7 +10,6 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/sirupsen/logrus"
-	"log"
 	"net"
 	"strconv"
 	"syscall"
@@ -18,29 +17,18 @@ import (
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target arm64,amd64,arm,riscv64 --no-global-types -type event bpf bpf/tracer.c -- -I./bpf/headers
 type EbpfPortTracker struct {
-	callbackFn func(event *trackapi.PortEvent)
+	CallbackFn func(event *trackapi.PortEvent)
 }
 
-func NewTracker(callbackFn func(event *trackapi.PortEvent)) trackapi.PortTracker {
-	return &EbpfPortTracker{callbackFn: callbackFn}
-}
-
-func getCurrentNetNS() (uint32, error) {
-	var stat syscall.Stat_t
-	err := syscall.Stat("/proc/self/ns/net", &stat)
-	if err != nil {
-		return 0, err
-	}
-	return uint32(stat.Ino), nil
+func NewTracker(callbackFn func(event *trackapi.PortEvent)) (trackapi.PortTracker, error) {
+	return &EbpfPortTracker{CallbackFn: callbackFn}, nil
 }
 
 func (m *EbpfPortTracker) Run(ctx context.Context) error {
-	log.Println("rlimit before")
 	// Allow the current process to lock memory for eBPF resources.
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return err
 	}
-	log.Println("rlimit")
 
 	objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
@@ -52,7 +40,6 @@ func (m *EbpfPortTracker) Run(ctx context.Context) error {
 			logrus.Error("error during close of bpfObjects", err)
 		}
 	}(&objs)
-	log.Println("Loaded objects")
 
 	probes := LoadProbes(objs)
 	links := make(map[string]link.Link)
@@ -63,7 +50,6 @@ func (m *EbpfPortTracker) Run(ctx context.Context) error {
 		}
 		links[funcName] = probeLink
 	}
-	log.Println("Started links")
 
 	defer func() {
 		for _, probeLink := range links {
@@ -112,14 +98,14 @@ func (m *EbpfPortTracker) Run(ctx context.Context) error {
 		if ns == event.Netns {
 			if event.Action == trackapi.OPEN {
 				bindings[event.Pid] = ""
-				m.callbackFn(&trackapi.PortEvent{
+				m.CallbackFn(&trackapi.PortEvent{
 					Protocol: event.Proto,
 					Action:   event.Action,
 					Ip:       ReconstructIPAddress(event),
 					Port:     strconv.Itoa(int(event.Port)),
 				})
 			} else if _, ok := bindings[event.Pid]; ok {
-				m.callbackFn(&trackapi.PortEvent{
+				m.CallbackFn(&trackapi.PortEvent{
 					Protocol: event.Proto,
 					Action:   event.Action,
 					Ip:       ReconstructIPAddress(event),
@@ -129,6 +115,15 @@ func (m *EbpfPortTracker) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func getCurrentNetNS() (uint32, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat("/proc/self/ns/net", &stat)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(stat.Ino), nil
 }
 
 func ReconstructIPAddress(event bpfEvent) net.IP {
