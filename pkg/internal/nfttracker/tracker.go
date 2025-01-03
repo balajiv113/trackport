@@ -39,10 +39,12 @@ func (m *NftPortTracker) Run(ctx context.Context) error {
 			rule := event.Data.(*nftables.Rule)
 			if isDNATRule(rule) {
 				portEvent := m.convertToEvent(rule)
-				if event.Type == nftables.MonitorEventTypeDelRule {
-					portEvent.Action = trackapi.CLOSE
+				if portEvent != nil {
+					if event.Type == nftables.MonitorEventTypeDelRule {
+						portEvent.Action = trackapi.CLOSE
+					}
+					m.CallbackFn(portEvent)
 				}
-				m.CallbackFn(portEvent)
 			}
 		}
 	}
