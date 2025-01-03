@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"log"
+
 	"github.com/balajiv113/trackport/pkg/trackapi"
 	"github.com/balajiv113/trackport/pkg/tracker"
-	"log"
 )
 
 func main() {
@@ -12,8 +13,7 @@ func main() {
 		log.Print(event)
 	}
 	runner := tracker.NewRunner(tracker.WithBpf(), tracker.WithNft())
-	errCh := runner.Run(context.Background(), callbackFn)
-	err := <-errCh
+	err := runner.Run(context.Background(), callbackFn)
 	if err != nil {
 		log.Fatal(err)
 	}

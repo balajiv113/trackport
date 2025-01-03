@@ -3,12 +3,13 @@ package nfttracker
 import (
 	"context"
 	"encoding/binary"
+	"net"
+	"strconv"
+
 	"github.com/balajiv113/trackport/pkg/trackapi"
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 	"github.com/sirupsen/logrus"
-	"net"
-	"strconv"
 )
 
 type NftPortTracker struct {
@@ -37,10 +38,7 @@ func (m *NftPortTracker) Run(ctx context.Context) error {
 		if event.Type == nftables.MonitorEventTypeNewRule || event.Type == nftables.MonitorEventTypeDelRule {
 			rule := event.Data.(*nftables.Rule)
 			if isDNATRule(rule) {
-				if err != nil {
-					logrus.Error("error in nftables events", err)
-				}
-				portEvent := extractPortEvent(rule)
+				portEvent := m.convertToEvent(rule)
 				if event.Type == nftables.MonitorEventTypeDelRule {
 					portEvent.Action = trackapi.CLOSE
 				}
@@ -51,13 +49,46 @@ func (m *NftPortTracker) Run(ctx context.Context) error {
 	return nil
 }
 
-// isDNATRule filters DNAT rules by checking their type and expressions
-func isDNATRule(rule *nftables.Rule) bool {
-	if rule == nil || rule.Table == nil || rule.Chain == nil {
-		return false
+func (m *NftPortTracker) convertToEvent(dnatRule *nftables.Rule) *trackapi.PortEvent {
+	protocol := -1
+	port := -1
+	offset := -1
+	var address net.IP
+	for _, e := range dnatRule.Exprs {
+		switch t := e.(type) {
+		case *expr.Payload:
+			offset = int(t.Offset)
+		case *expr.Cmp:
+			if offset == 16 && len(t.Data) == 4 { // TODO support ipv6
+				address = t.Data
+			}
+			if offset == 9 {
+				protocol = int(extractProtocolFromCmp(t))
+			}
+			if offset == 2 {
+				port = extractPortFromCmp(t)
+			}
+		}
+	}
+	if protocol != -1 && port != -1 {
+		if address == nil {
+			address = net.ParseIP("0.0.0.0")
+		}
+		return &trackapi.PortEvent{
+			Protocol: trackapi.Protocol(protocol),
+			Action:   trackapi.OPEN,
+			IP:       address,
+			Port:     strconv.Itoa(port),
+		}
 	}
 
-	if rule.Table.Name != "nat" {
+	// No port found
+	return nil
+}
+
+// isDNATRule filters DNAT rules by checking their type and expressions.
+func isDNATRule(rule *nftables.Rule) bool {
+	if !isNat(rule) {
 		return false
 	}
 
@@ -69,45 +100,25 @@ func isDNATRule(rule *nftables.Rule) bool {
 	return false
 }
 
-func extractPortEvent(rule *nftables.Rule) *trackapi.PortEvent {
-	protocol := -1
-	port := -1
-	for _, e := range rule.Exprs {
-		switch t := e.(type) {
-		case *expr.Cmp:
-			if protocol == -1 {
-				protocol = int(extractProtocolFromCmp(t))
-			} else {
-				port = int(extractPortFromCmp(t))
-			}
-		}
-	}
-	if protocol != -1 && port != -1 {
-		return &trackapi.PortEvent{
-			Protocol: trackapi.Protocol(protocol),
-			Action:   trackapi.OPEN,
-			Ip:       net.ParseIP("0.0.0.0"), //TODO support interface level binding using saddr
-			Port:     strconv.Itoa(port),
-		}
+func isNat(rule *nftables.Rule) bool {
+	if rule == nil || rule.Table == nil || rule.Chain == nil {
+		return false
 	}
 
-	// No port found
-	return nil
+	if rule.Table.Name != "nat" {
+		return false
+	}
+	return true
 }
 
 func extractProtocolFromCmp(cmpExpr *expr.Cmp) trackapi.Protocol {
-	if len(cmpExpr.Data) == 1 {
-		if cmpExpr.Data[0] == 17 {
-			return trackapi.UDP
-		}
+	if cmpExpr.Data[0] == 17 {
+		return trackapi.UDP
 	}
 	return trackapi.TCP
 }
 
-func extractPortFromCmp(cmpExpr *expr.Cmp) uint16 {
-	if len(cmpExpr.Data) == 2 {
-		port := binary.BigEndian.Uint16(cmpExpr.Data)
-		return port
-	}
-	return 0
+func extractPortFromCmp(cmpExpr *expr.Cmp) int {
+	port := binary.BigEndian.Uint16(cmpExpr.Data)
+	return int(port)
 }

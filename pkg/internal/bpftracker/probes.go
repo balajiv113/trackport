@@ -2,12 +2,13 @@ package bpftracker
 
 import (
 	"errors"
+	"strings"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/features"
 	"github.com/cilium/ebpf/link"
 	"github.com/sirupsen/logrus"
-	"strings"
 )
 
 type FentryOrKprobe struct {
@@ -29,12 +30,12 @@ func LoadProbes(objs bpfObjects) map[string]FentryOrKprobe {
 }
 
 func RunProbe(funcName string, probe FentryOrKprobe) (link.Link, error) {
-	//if ok := commonFentryCheck(funcName); probe.fentry != nil && ok {
-	//	logrus.Infof("Binding in fentry")
-	//	return link.AttachTracing(link.TracingOptions{
-	//		Program: probe.fentry,
-	//	})
-	//}
+	if ok := commonFentryCheck(funcName); probe.fentry != nil && ok {
+		logrus.Infof("Binding in fentry")
+		return link.AttachTracing(link.TracingOptions{
+			Program: probe.fentry,
+		})
+	}
 	if probe.kprobe != nil {
 		if strings.HasSuffix(funcName, "_exit") {
 			logrus.Infof("Binding in kretprobe")
@@ -73,13 +74,14 @@ func commonFentryCheck(funcName string) bool {
 	}
 	defer prog.Close()
 
-	link, err := link.AttachTracing(link.TracingOptions{
+	traceLink, err := link.AttachTracing(link.TracingOptions{
 		Program: prog,
 	})
 	if err != nil {
 		return false
 	}
-	defer link.Close()
+
+	traceLink.Close()
 
 	return true
 }

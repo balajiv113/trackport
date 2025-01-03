@@ -22,19 +22,10 @@ const (
 	CLOSE
 )
 
-func ProtocolToString(protocol Protocol) string {
-	switch protocol {
-	case UDP:
-		return "udp"
-	default:
-		return "tcp"
-	}
-}
-
 type PortEvent struct {
 	Protocol Protocol
 	Action   Action
-	Ip       net.IP
+	IP       net.IP
 	Port     string
 }
 

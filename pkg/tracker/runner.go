@@ -3,10 +3,11 @@ package tracker
 import (
 	"context"
 	"fmt"
-	"github.com/balajiv113/trackport/pkg/bpftracker"
-	"github.com/balajiv113/trackport/pkg/nfttracker"
-	"github.com/balajiv113/trackport/pkg/trackapi"
 	"sync"
+
+	"github.com/balajiv113/trackport/pkg/internal/bpftracker"
+	"github.com/balajiv113/trackport/pkg/internal/nfttracker"
+	"github.com/balajiv113/trackport/pkg/trackapi"
 )
 
 type Runner struct {
@@ -16,17 +17,19 @@ type Runner struct {
 	openPorts   map[string]*trackapi.PortEvent
 }
 
-type RunnerOption func(func(event *trackapi.PortEvent)) trackapi.PortTracker
+type EventCallback func(event *trackapi.PortEvent)
+
+type RunnerOption func(EventCallback) trackapi.PortTracker
 
 func WithBpf() RunnerOption {
-	return func(callBack func(event *trackapi.PortEvent)) trackapi.PortTracker {
-		return &bpftracker.EbpfPortTracker{CallbackFn: callBack}
+	return func(callBack EventCallback) trackapi.PortTracker {
+		return bpftracker.NewTracker(callBack)
 	}
 }
 
 func WithNft() RunnerOption {
-	return func(callBack func(event *trackapi.PortEvent)) trackapi.PortTracker {
-		return &nfttracker.NftPortTracker{CallbackFn: callBack}
+	return func(callBack EventCallback) trackapi.PortTracker {
+		return nfttracker.NewTracker(callBack)
 	}
 }
 
@@ -35,7 +38,7 @@ func NewRunner(options ...RunnerOption) *Runner {
 	return &Runner{options: options, openPorts: openPorts}
 }
 
-func (r *Runner) withCacheCallback(callBack func(event *trackapi.PortEvent)) func(event *trackapi.PortEvent) {
+func (r *Runner) cacheCallback(callBack func(event *trackapi.PortEvent)) func(event *trackapi.PortEvent) {
 	return func(event *trackapi.PortEvent) {
 		r.openPortsRw.Lock()
 		defer r.openPortsRw.Unlock()
@@ -55,22 +58,22 @@ func (r *Runner) withCacheCallback(callBack func(event *trackapi.PortEvent)) fun
 	}
 }
 
-func (r *Runner) Run(ctx context.Context, callBack func(event *trackapi.PortEvent)) chan error {
+func (r *Runner) Run(ctx context.Context, callBack func(event *trackapi.PortEvent)) error {
 	errorCh := make(chan error)
 
-	callback := r.withCacheCallback(callBack)
-	go func() {
-		for _, opt := range r.options {
-			tracker := opt(callback)
-			go func() {
-				err := tracker.Run(ctx)
-				errorCh <- err
-			}()
-		}
-	}()
-	return errorCh
+	callback := r.cacheCallback(callBack)
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	for _, opt := range r.options {
+		tracker := opt(callback)
+		go func() {
+			err := tracker.Run(cancelCtx)
+			errorCh <- err
+		}()
+	}
+	defer cancelFunc()
+	return <-errorCh
 }
 
 func key(event *trackapi.PortEvent) string {
-	return fmt.Sprintf("%d-%s-%s", event.Protocol, event.Ip.String(), event.Port)
+	return fmt.Sprintf("%d-%s-%s", event.Protocol, event.IP.String(), event.Port)
 }

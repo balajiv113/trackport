@@ -5,23 +5,25 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"net"
+	"strconv"
+	"syscall"
+
 	"github.com/balajiv113/trackport/pkg/trackapi"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/sirupsen/logrus"
-	"net"
-	"strconv"
-	"syscall"
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target arm64,amd64,arm,riscv64 --no-global-types -type event bpf bpf/tracer.c -- -I./bpf/headers
+
 type EbpfPortTracker struct {
 	CallbackFn func(event *trackapi.PortEvent)
 }
 
-func NewTracker(callbackFn func(event *trackapi.PortEvent)) (trackapi.PortTracker, error) {
-	return &EbpfPortTracker{CallbackFn: callbackFn}, nil
+func NewTracker(callbackFn func(event *trackapi.PortEvent)) trackapi.PortTracker {
+	return &EbpfPortTracker{CallbackFn: callbackFn}
 }
 
 func (m *EbpfPortTracker) Run(ctx context.Context) error {
@@ -101,14 +103,14 @@ func (m *EbpfPortTracker) Run(ctx context.Context) error {
 				m.CallbackFn(&trackapi.PortEvent{
 					Protocol: event.Proto,
 					Action:   event.Action,
-					Ip:       ReconstructIPAddress(event),
+					IP:       ReconstructIPAddress(event),
 					Port:     strconv.Itoa(int(event.Port)),
 				})
 			} else if _, ok := bindings[event.Pid]; ok {
 				m.CallbackFn(&trackapi.PortEvent{
 					Protocol: event.Proto,
 					Action:   event.Action,
-					Ip:       ReconstructIPAddress(event),
+					IP:       ReconstructIPAddress(event),
 					Port:     strconv.Itoa(int(event.Port)),
 				})
 				delete(bindings, event.Pid)
@@ -131,10 +133,9 @@ func ReconstructIPAddress(event bpfEvent) net.IP {
 		ip := make([]byte, net.IPv4len)
 		binary.BigEndian.PutUint32(ip[0:4], uint32(event.IpL))
 		return ip
-	} else {
-		ip := make([]byte, net.IPv6len)
-		binary.BigEndian.PutUint64(ip[0:8], event.IpH)
-		binary.BigEndian.PutUint64(ip[8:16], event.IpL)
-		return ip
 	}
+	ip := make([]byte, net.IPv6len)
+	binary.BigEndian.PutUint64(ip[0:8], event.IpH)
+	binary.BigEndian.PutUint64(ip[8:16], event.IpL)
+	return ip
 }
