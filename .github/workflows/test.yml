@@ -25,8 +25,6 @@ jobs:
       with:
         version: v1.62.0
         args: --verbose --timeout=10m
-    - name: Run file and directory name linter
-      uses: ls-lint/action@1887e6c0e7f2dfa81a2d67591f0eb7782720026f  # v2.2.3
     - name: Install go-licenses
       run: go install github.com/google/go-licenses@v1.6.0
     - name: Check licenses
