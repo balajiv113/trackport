@@ -218,6 +218,51 @@ struct user_regs_struct {
 #endif /* __TARGET_ARCH_riscv */
 /* === pt_regs support for arm64 end ===*/
 
+#if defined(__TARGET_ARCH_powerpc)
+struct user_pt_regs {
+	long unsigned int gpr[32];
+	long unsigned int nip;
+	long unsigned int msr;
+	long unsigned int orig_gpr3;
+	long unsigned int ctr;
+	long unsigned int link;
+	long unsigned int xer;
+	long unsigned int ccr;
+	long unsigned int mq;
+	long unsigned int trap;
+	long unsigned int dar;
+	long unsigned int dsisr;
+	long unsigned int result;
+};
+
+struct pt_regs {
+	union {
+		struct user_pt_regs user_regs;
+		struct {
+			long unsigned int gpr[32];
+			long unsigned int nip;
+			long unsigned int msr;
+			long unsigned int orig_gpr3;
+			long unsigned int ctr;
+			long unsigned int link;
+			long unsigned int xer;
+			long unsigned int ccr;
+			long unsigned int mq;
+			long unsigned int trap;
+			union {
+				long unsigned int dar;
+				long unsigned int dear;
+			};
+			union {
+				long unsigned int dsisr;
+				long unsigned int esr;
+			};
+			long unsigned int result;
+		};
+	};
+};
+#endif /* __TARGET_ARCH_powerpc */
+
 /* === Manually stripped version of vmlinux.h start, refer sock.h in linux kernel ===*/
 typedef struct {
 	int counter;

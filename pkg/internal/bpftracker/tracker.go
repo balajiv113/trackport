@@ -16,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target arm64,amd64,arm,riscv64 --no-global-types -type event bpf bpf/tracer.c -- -I./bpf/headers
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target arm64,amd64,arm,riscv64,ppc64,ppc64le --no-global-types -type event bpf bpf/tracer.c -- -I./bpf/headers
 
 type EbpfPortTracker struct {
 	CallbackFn func(event *trackapi.PortEvent)
